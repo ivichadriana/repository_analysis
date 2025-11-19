@@ -19,16 +19,17 @@ CLEAN_DIR = "data/clean"
 # ---------------------- Intent Tag Heuristics --------------------
 # These are simple regexes applied to commit/issue/PR text to infer themes.
 INTENT_PATTERNS = {
-    "feature":  r"\b(feat|feature|add(ed)?|introduc(e|ed|ing)|implement(ed)?|support(ed)?)\b",
-    "fix":      r"\b(fix(ed|es)?|bug|issue|resolve(d|s)?|patch)\b",
-    "docs":     r"\b(doc(s|umentation)?|readme|typo|spelling|guide|tutorial)\b",
+    "feature": r"\b(feat|feature|add(ed)?|introduc(e|ed|ing)|implement(ed)?|support(ed)?)\b",
+    "fix": r"\b(fix(ed|es)?|bug|issue|resolve(d|s)?|patch)\b",
+    "docs": r"\b(doc(s|umentation)?|readme|typo|spelling|guide|tutorial)\b",
     "refactor": r"\b(refactor(ed|ing)?|cleanup|restructure|reorganize)\b",
-    "test":     r"\b(test(s|ing)?|unit[-\s]?test|pytest|coverage)\b",
-    "infra":    r"\b(ci|build|deploy|pipeline|github[-\s]?actions|action|docker|compose|helm|k8s|kubernetes)\b",
-    "deps":     r"\b(dep(s|endenc(y|ies))?|bump|upgrade|update package|requirements\.txt|poetry\.lock|package\.json|pipfile\.lock)\b",
+    "test": r"\b(test(s|ing)?|unit[-\s]?test|pytest|coverage)\b",
+    "infra": r"\b(ci|build|deploy|pipeline|github[-\s]?actions|action|docker|compose|helm|k8s|kubernetes)\b",
+    "deps": r"\b(dep(s|endenc(y|ies))?|bump|upgrade|update package|requirements\.txt|poetry\.lock|package\.json|pipfile\.lock)\b",
 }
 
 # ----------------------- Small Helpers --------------------------
+
 
 def _readme_text(repo_json: dict) -> str | None:
     """
@@ -41,7 +42,14 @@ def _readme_text(repo_json: dict) -> str | None:
         return t
 
     # 2) Fallback: look through the GraphQL objects we requested
-    for k in ["readmeMd", "readmeCapMd", "readmeRst", "readmeTxt", "docsReadmeMd", "docsReadmeRst"]:
+    for k in [
+        "readmeMd",
+        "readmeCapMd",
+        "readmeRst",
+        "readmeTxt",
+        "docsReadmeMd",
+        "docsReadmeRst",
+    ]:
         node = repo_json.get(k)
         if isinstance(node, dict):
             txt = node.get("text")
@@ -50,13 +58,19 @@ def _readme_text(repo_json: dict) -> str | None:
 
     return None
 
+
 def _topics_list(repo_json: dict) -> list[str]:
     """Extract repo topics as a simple list of strings."""
     try:
         nodes = (repo_json.get("repositoryTopics") or {}).get("nodes", []) or []
-        return [n["topic"]["name"] for n in nodes if n and n.get("topic") and n["topic"].get("name")]
+        return [
+            n["topic"]["name"]
+            for n in nodes
+            if n and n.get("topic") and n["topic"].get("name")
+        ]
     except Exception:
         return []
+
 
 def _lang_list(repo_json: dict) -> list[str]:
     """Extract repo languages as a simple list of strings (descending by size as fetched)."""
@@ -65,6 +79,7 @@ def _lang_list(repo_json: dict) -> list[str]:
         return [n.get("name") for n in nodes if n and n.get("name")]
     except Exception:
         return []
+
 
 def tag_text(text: str) -> list[str]:
     """
@@ -78,6 +93,7 @@ def tag_text(text: str) -> list[str]:
         if re.search(pattern, text, flags=re.IGNORECASE):
             tags.append(name)
     return tags
+
 
 def load_seed(seed_csv: str = SEED_CSV) -> pd.DataFrame:
     """
@@ -95,14 +111,19 @@ def load_seed(seed_csv: str = SEED_CSV) -> pd.DataFrame:
         df["project_name"] = None
     return df
 
+
 def read_repo_json(path: str) -> dict:
     """Load one raw JSON file (produced by fetch_github_activity.py)."""
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 # ---------------------- Normalization Core ----------------------
 
-def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) -> dict[str, pd.DataFrame]:
+
+def normalize(
+    repo_json: dict, owner: str, repo: str, project_id, project_name
+) -> dict[str, pd.DataFrame]:
     """
     Convert one repository JSON blob into tidy tables.
     Returns a dict of DataFrames keyed by table name:
@@ -129,28 +150,32 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
     }
 
     # ---------------- Repo-level context (copied onto every row) ----------------
-    repo_description        = repo_json.get("description")
-    repo_homepage           = repo_json.get("homepageUrl")
-    repo_topics             = _topics_list(repo_json)
-    repo_primary_language   = (repo_json.get("primaryLanguage") or {}).get("name")
-    repo_languages          = _lang_list(repo_json)
-    repo_readme_text        = _readme_text(repo_json)
+    repo_description = repo_json.get("description")
+    repo_homepage = repo_json.get("homepageUrl")
+    repo_topics = _topics_list(repo_json)
+    repo_primary_language = (repo_json.get("primaryLanguage") or {}).get("name")
+    repo_languages = _lang_list(repo_json)
+    repo_readme_text = _readme_text(repo_json)
 
     # Attach repo context to the base dict; each row inherits these fields
-    base.update({
-        "repo_description": repo_description,
-        "repo_homepage": repo_homepage,
-        "repo_topics": ",".join(repo_topics) if repo_topics else None,
-        "repo_primary_language": repo_primary_language,
-        "repo_languages": ",".join(repo_languages) if repo_languages else None,
-        "readme_text": repo_readme_text,  # used later for “Goal” in LLM prompts
-    })
+    base.update(
+        {
+            "repo_description": repo_description,
+            "repo_homepage": repo_homepage,
+            "repo_topics": ",".join(repo_topics) if repo_topics else None,
+            "repo_primary_language": repo_primary_language,
+            "repo_languages": ",".join(repo_languages) if repo_languages else None,
+            "readme_text": repo_readme_text,  # used later for “Goal” in LLM prompts
+        }
+    )
 
     # ---------------- Commits ----------------
     # Navigate to defaultBranchRef.target.history.nodes safely
     commits_nodes = []
     try:
-        commits_nodes = (repo_json["defaultBranchRef"]["target"]["history"]["nodes"] or [])
+        commits_nodes = (
+            repo_json["defaultBranchRef"]["target"]["history"]["nodes"] or []
+        )
     except Exception:
         commits_nodes = []
 
@@ -163,23 +188,27 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
         user_obj = (n.get("author") or {}).get("user") or {}
         author_login = user_obj.get("login")
 
-        commit_rows.append({
-            **base,
-            "commit_oid": n.get("oid"),
-            "committed_at": n.get("committedDate"),
-            "message_headline": n.get("messageHeadline"),
-            "message": n.get("message"),
-            "author_login": author_login,
-            "author_name": (n.get("author") or {}).get("name"),
-            "author_email": (n.get("author") or {}).get("email"),
-            "additions": n.get("additions"),
-            "deletions": n.get("deletions"),
-            "associated_pr_numbers": ",".join(
-                str(pr.get("number")) for pr in (n.get("associatedPullRequests") or {}).get("nodes", []) if pr
-            ),
-            "commit_url": n.get("url"),
-            "intent_tags": "|".join(tag_text(msg)),
-        })
+        commit_rows.append(
+            {
+                **base,
+                "commit_oid": n.get("oid"),
+                "committed_at": n.get("committedDate"),
+                "message_headline": n.get("messageHeadline"),
+                "message": n.get("message"),
+                "author_login": author_login,
+                "author_name": (n.get("author") or {}).get("name"),
+                "author_email": (n.get("author") or {}).get("email"),
+                "additions": n.get("additions"),
+                "deletions": n.get("deletions"),
+                "associated_pr_numbers": ",".join(
+                    str(pr.get("number"))
+                    for pr in (n.get("associatedPullRequests") or {}).get("nodes", [])
+                    if pr
+                ),
+                "commit_url": n.get("url"),
+                "intent_tags": "|".join(tag_text(msg)),
+            }
+        )
     commits_df = pd.DataFrame(commit_rows)
 
     # ---------------- Issues ----------------
@@ -187,20 +216,24 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
     issue_rows = []
     for n in issues_nodes:
         title = n.get("title") or ""
-        body  = n.get("bodyText") or ""
-        labels = [lab.get("name") for lab in (n.get("labels") or {}).get("nodes", []) if lab]
-        issue_rows.append({
-            **base,
-            "issue_number": n.get("number"),
-            "title": title,
-            "body": body,
-            "labels": ",".join(labels) if labels else None,
-            "author_login": (n.get("author") or {}).get("login"),
-            "created_at": n.get("createdAt"),
-            "closed_at": n.get("closedAt"),
-            "issue_url": n.get("url"),
-            "intent_tags": "|".join(tag_text(f"{title}\n{body}")),
-        })
+        body = n.get("bodyText") or ""
+        labels = [
+            lab.get("name") for lab in (n.get("labels") or {}).get("nodes", []) if lab
+        ]
+        issue_rows.append(
+            {
+                **base,
+                "issue_number": n.get("number"),
+                "title": title,
+                "body": body,
+                "labels": ",".join(labels) if labels else None,
+                "author_login": (n.get("author") or {}).get("login"),
+                "created_at": n.get("createdAt"),
+                "closed_at": n.get("closedAt"),
+                "issue_url": n.get("url"),
+                "intent_tags": "|".join(tag_text(f"{title}\n{body}")),
+            }
+        )
     issues_df = pd.DataFrame(issue_rows)
 
     # ---------------- Pull Requests ----------------
@@ -208,22 +241,26 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
     pr_rows = []
     for n in pr_nodes:
         title = n.get("title") or ""
-        body  = n.get("bodyText") or ""
-        labels = [lab.get("name") for lab in (n.get("labels") or {}).get("nodes", []) if lab]
-        pr_rows.append({
-            **base,
-            "pr_number": n.get("number"),
-            "title": title,
-            "body": body,
-            "labels": ",".join(labels) if labels else None,
-            "author_login": (n.get("author") or {}).get("login"),
-            "state": n.get("state"),
-            "created_at": n.get("createdAt"),
-            "merged_at": n.get("mergedAt"),
-            "closed_at": n.get("closedAt"),
-            "pr_url": n.get("url"),
-            "intent_tags": "|".join(tag_text(f"{title}\n{body}")),
-        })
+        body = n.get("bodyText") or ""
+        labels = [
+            lab.get("name") for lab in (n.get("labels") or {}).get("nodes", []) if lab
+        ]
+        pr_rows.append(
+            {
+                **base,
+                "pr_number": n.get("number"),
+                "title": title,
+                "body": body,
+                "labels": ",".join(labels) if labels else None,
+                "author_login": (n.get("author") or {}).get("login"),
+                "state": n.get("state"),
+                "created_at": n.get("createdAt"),
+                "merged_at": n.get("mergedAt"),
+                "closed_at": n.get("closedAt"),
+                "pr_url": n.get("url"),
+                "intent_tags": "|".join(tag_text(f"{title}\n{body}")),
+            }
+        )
     prs_df = pd.DataFrame(pr_rows)
 
     # ---------------- PR Files (areas touched) ----------------
@@ -233,13 +270,15 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
         pr_num = n.get("number")
         files_nodes = (n.get("files") or {}).get("nodes", []) or []
         for f in files_nodes:
-            pr_file_rows.append({
-                **base,
-                "pr_number": pr_num,
-                "path": f.get("path"),
-                "additions": f.get("additions"),
-                "deletions": f.get("deletions"),
-            })
+            pr_file_rows.append(
+                {
+                    **base,
+                    "pr_number": pr_num,
+                    "path": f.get("path"),
+                    "additions": f.get("additions"),
+                    "deletions": f.get("deletions"),
+                }
+            )
     pr_files_df = pd.DataFrame(pr_file_rows)
 
     # ---------------- Releases ----------------
@@ -247,17 +286,19 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
     rel_rows = []
     for n in rel_nodes:
         title = n.get("name") or n.get("tagName") or ""
-        desc  = n.get("description") or ""
-        rel_rows.append({
-            **base,
-            "release_name": n.get("name"),
-            "release_tag": n.get("tagName"),
-            "published_at": n.get("publishedAt"),
-            "release_url": n.get("url"),
-            "description": desc,
-            "description_html": n.get("descriptionHTML"),
-            "intent_tags": "|".join(tag_text(f"{title}\n{desc}")),
-        })
+        desc = n.get("description") or ""
+        rel_rows.append(
+            {
+                **base,
+                "release_name": n.get("name"),
+                "release_tag": n.get("tagName"),
+                "published_at": n.get("publishedAt"),
+                "release_url": n.get("url"),
+                "description": desc,
+                "description_html": n.get("descriptionHTML"),
+                "intent_tags": "|".join(tag_text(f"{title}\n{desc}")),
+            }
+        )
     releases_df = pd.DataFrame(rel_rows)
 
     # ---------------- Stargazers ----------------
@@ -267,26 +308,32 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
     for e in star_edges:
         node = (e or {}).get("node") or {}
         # organizations is only present for Users in our query
-        org_nodes = ((node.get("organizations") or {}).get("nodes", []) if "organizations" in node else []) or []
+        org_nodes = (
+            (node.get("organizations") or {}).get("nodes", [])
+            if "organizations" in node
+            else []
+        ) or []
         org_pairs = []
         for org in org_nodes:
             if not org:
                 continue
             login = org.get("login")
-            name  = org.get("name")
+            name = org.get("name")
             if login or name:
                 # store compactly: "orgLogin:Org Name"
                 org_pairs.append(":".join([x for x in [login, name] if x]))
 
-        star_rows.append({
-            **base,
-            "starred_at": e.get("starredAt"),
-            "stargazer_login": node.get("login"),
-            "stargazer_name": node.get("name"),
-            "stargazer_company": node.get("company"),
-            "stargazer_location": node.get("location"),
-            "stargazer_orgs": ",".join(org_pairs) if org_pairs else None,
-        })
+        star_rows.append(
+            {
+                **base,
+                "starred_at": e.get("starredAt"),
+                "stargazer_login": node.get("login"),
+                "stargazer_name": node.get("name"),
+                "stargazer_company": node.get("company"),
+                "stargazer_location": node.get("location"),
+                "stargazer_orgs": ",".join(org_pairs) if org_pairs else None,
+            }
+        )
     stargazers_df = pd.DataFrame(star_rows)
 
     # ---------------- Forks ----------------
@@ -296,31 +343,39 @@ def normalize(repo_json: dict, owner: str, repo: str, project_id, project_name) 
     for n in fork_nodes:
         owner_obj = n.get("owner") or {}
         owner_type = owner_obj.get("__typename")  # "User" or "Organization"
-        fork_rows.append({
-            **base,
-            "fork_name_with_owner": n.get("nameWithOwner"),
-            "fork_owner_login": owner_obj.get("login"),
-            "fork_owner_type": owner_type,
-            "fork_owner_name": owner_obj.get("name"),
-            "fork_owner_company": owner_obj.get("company") if owner_type == "User" else None,
-            "fork_owner_location": owner_obj.get("location"),
-            "fork_owner_org_description": owner_obj.get("description") if owner_type == "Organization" else None,
-            "fork_created_at": n.get("createdAt"),
-        })
+        fork_rows.append(
+            {
+                **base,
+                "fork_name_with_owner": n.get("nameWithOwner"),
+                "fork_owner_login": owner_obj.get("login"),
+                "fork_owner_type": owner_type,
+                "fork_owner_name": owner_obj.get("name"),
+                "fork_owner_company": owner_obj.get("company")
+                if owner_type == "User"
+                else None,
+                "fork_owner_location": owner_obj.get("location"),
+                "fork_owner_org_description": owner_obj.get("description")
+                if owner_type == "Organization"
+                else None,
+                "fork_created_at": n.get("createdAt"),
+            }
+        )
     forks_df = pd.DataFrame(fork_rows)
 
     # Return all tidy tables for this repo
     return {
-        "commits":       commits_df,
-        "issues":        issues_df,
+        "commits": commits_df,
+        "issues": issues_df,
         "pull_requests": prs_df,
-        "pr_files":      pr_files_df,
-        "releases":      releases_df,
-        "stargazers":    stargazers_df,
-        "forks":         forks_df,
+        "pr_files": pr_files_df,
+        "releases": releases_df,
+        "stargazers": stargazers_df,
+        "forks": forks_df,
     }
 
+
 # ------------------------------ Main ----------------------------------
+
 
 def main():
     # Ensure output dir exists
@@ -329,7 +384,9 @@ def main():
     # Load the seed to attach project metadata to each row
     seed = load_seed()
     # Build a lookup: (owner, repo) -> {"project_id":..., "project_name":...}
-    meta = seed.set_index(["owner", "repo"])[["project_id", "project_name"]].to_dict("index")
+    meta = seed.set_index(["owner", "repo"])[["project_id", "project_name"]].to_dict(
+        "index"
+    )
 
     # Where are the raw repo JSONs?
     json_paths = sorted(glob.glob(os.path.join(RAW_DIR, "*.json")))
@@ -373,6 +430,7 @@ def main():
         out_path = os.path.join(CLEAN_DIR, f"_all_{name}.parquet")
         combined.to_parquet(out_path, index=False)
         print(f"Saved combined {name}: {out_path}")
+
 
 if __name__ == "__main__":
     main()

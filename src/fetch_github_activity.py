@@ -23,13 +23,16 @@ load_dotenv()
 try:
     GH_TOKEN = os.environ["GITHUB_TOKEN"]
 except KeyError as e:
-    raise KeyError("GITHUB_TOKEN is missing. Put it in .env (GITHUB_TOKEN=...) or export it in your environment.") from e
+    raise KeyError(
+        "GITHUB_TOKEN is missing. Put it in .env (GITHUB_TOKEN=...) or export it in your environment."
+    ) from e
 
 # GitHub GraphQL endpoint
 GH_GQL = "https://api.github.com/graphql"
 
 # Where to search for failed fetches
 FAILED_IDX = "data/raw/github/_failed.json"
+
 
 def _read_failed_idx() -> list:
     if not os.path.exists(FAILED_IDX):
@@ -42,12 +45,14 @@ def _read_failed_idx() -> list:
         # Corrupt/partial file? Treat as empty.
         return []
 
+
 def _write_failed_idx(idx: list) -> None:
     os.makedirs(os.path.dirname(FAILED_IDX), exist_ok=True)
     tmp = FAILED_IDX + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(idx, f, ensure_ascii=False, indent=2)
     os.replace(tmp, FAILED_IDX)  # atomic
+
 
 # Standard HTTP auth header for GitHub API v4 (GraphQL)
 HEADERS = {"Authorization": f"Bearer {GH_TOKEN}"}
@@ -68,7 +73,7 @@ HEADERS = {"Authorization": f"Bearer {GH_TOKEN}"}
 #  - PR files (last 100 per PR)
 #  - releases (last 50 by createdAt), we filter to window in Python
 #  - enriched stargazers/forks identity fields
-#Everything until the closing """ is the GraphQL document sent to GitHub.
+# Everything until the closing """ is the GraphQL document sent to GitHub.
 GQL = """
 query RepoActivity(
   $owner:String!,
@@ -202,28 +207,40 @@ query RepoActivity(
 
 # ------------------------- Fetch functions with retries ---------------------------
 
+
 def _append_failed(owner, repo, err, attempts):
     idx = _read_failed_idx()
     if (owner, repo) not in [(x.get("owner"), x.get("repo")) for x in idx]:
         idx.append({"owner": owner, "repo": repo})
         _write_failed_idx(idx)
 
+
 def _save_error_stub(owner, repo, err, attempts, outdir):
     os.makedirs(outdir, exist_ok=True)
     p = os.path.join(outdir, f"{owner}__{repo}.json")
     stub = {
-        "owner": owner, "repo": repo,
+        "owner": owner,
+        "repo": repo,
         "fetched_at": datetime.utcnow().isoformat() + "Z",
-        "error": {"type": type(err).__name__, "message": str(err), "attempts": attempts},
+        "error": {
+            "type": type(err).__name__,
+            "message": str(err),
+            "attempts": attempts,
+        },
     }
     with open(p, "w", encoding="utf-8") as f:
         json.dump(stub, f, ensure_ascii=False, indent=2)
     _append_failed(owner, repo, err, attempts)
 
+
 def _mark_success(owner, repo):
     if not os.path.exists(FAILED_IDX):
         return
-    idx = [x for x in _read_failed_idx() if not (x.get("owner") == owner and x.get("repo") == repo)]
+    idx = [
+        x
+        for x in _read_failed_idx()
+        if not (x.get("owner") == owner and x.get("repo") == repo)
+    ]
     if not idx:
         # all failures cleared -> remove the file entirely
         try:
@@ -233,6 +250,7 @@ def _mark_success(owner, repo):
             _write_failed_idx([])
     else:
         _write_failed_idx(idx)
+
 
 def _post(payload, max_retries=6):
     """
@@ -251,7 +269,12 @@ def _post(payload, max_retries=6):
             # Header-based hard rate-limit handling (works for GraphQL/REST)
             rl_rem = r.headers.get("X-RateLimit-Remaining")
             rl_reset = r.headers.get("X-RateLimit-Reset")
-            if rl_rem is not None and rl_rem.isdigit() and int(rl_rem) == 0 and rl_reset:
+            if (
+                rl_rem is not None
+                and rl_rem.isdigit()
+                and int(rl_rem) == 0
+                and rl_reset
+            ):
                 try:
                     reset_epoch = int(rl_reset)
                     sleep_for = max(0, reset_epoch - int(time.time()) + 1)
@@ -303,10 +326,12 @@ def _post(payload, max_retries=6):
 
     raise RuntimeError("GitHub GraphQL failed after retries")
 
+
 # ------------------------------ Utilities ------------------------------
 def iso_utc(dt: datetime) -> str:
     """Return an ISO8601 string in UTC with timezone suffix, e.g., '2025-08-20T18:03:00+00:00'."""
     return dt.astimezone(timezone.utc).isoformat()
+
 
 def _dt(s: str) -> datetime:
     """Parse GitHub ISO strings that may end with 'Z' or explicit '+00:00'."""
@@ -316,6 +341,7 @@ def _dt(s: str) -> datetime:
         s = s[:-1] + "+00:00"
     return datetime.fromisoformat(s)
 
+
 def choose_readme_text(repo_dict: dict) -> str | None:
     """
     Pick the first non-empty README text from the fetched variants.
@@ -323,7 +349,7 @@ def choose_readme_text(repo_dict: dict) -> str | None:
     """
     candidates = [
         repo_dict.get("readmeMd"),
-        repo_dict.get("readmeCapMd"),   # uppercase extension variant
+        repo_dict.get("readmeCapMd"),  # uppercase extension variant
         repo_dict.get("readmeRst"),
         repo_dict.get("readmeTxt"),
         repo_dict.get("docsReadmeMd"),
@@ -338,6 +364,7 @@ def choose_readme_text(repo_dict: dict) -> str | None:
             return txt
     return None
 
+
 # --------------------------- Fetch one repo ----------------------------
 def fetch_repo(owner, repo, since_iso, until_iso):
     """
@@ -351,9 +378,9 @@ def fetch_repo(owner, repo, since_iso, until_iso):
         "variables": {
             "owner": owner,
             "name": repo,
-            "sinceGit": since_iso,   # used by commit history
-            "untilGit": until_iso,   # used by commit history
-            "sinceDT": since_iso,    # used by issues.filterBy.since
+            "sinceGit": since_iso,  # used by commit history
+            "untilGit": until_iso,  # used by commit history
+            "sinceDT": since_iso,  # used by issues.filterBy.since
         },
     }
 
@@ -370,7 +397,8 @@ def fetch_repo(owner, repo, since_iso, until_iso):
     # PRs: keep only PRs whose createdAt falls within [since, until]
     pr_nodes = (repo_dict.get("pullRequests") or {}).get("nodes", []) or []
     pr_nodes = [
-        n for n in pr_nodes
+        n
+        for n in pr_nodes
         if n.get("createdAt") and since_dt <= _dt(n["createdAt"]) <= until_dt
     ]
     if "pullRequests" in repo_dict:
@@ -379,7 +407,8 @@ def fetch_repo(owner, repo, since_iso, until_iso):
     # Releases: keep only releases whose publishedAt falls within [since, until]
     rel_nodes = (repo_dict.get("releases") or {}).get("nodes", []) or []
     rel_nodes = [
-        n for n in rel_nodes
+        n
+        for n in rel_nodes
         if n.get("publishedAt") and since_dt <= _dt(n["publishedAt"]) <= until_dt
     ]
     if "releases" in repo_dict:
@@ -388,7 +417,8 @@ def fetch_repo(owner, repo, since_iso, until_iso):
     # Issues: GraphQL only has lower bound; apply upper bound here
     iss_nodes = (repo_dict.get("issues") or {}).get("nodes", []) or []
     iss_nodes = [
-        n for n in iss_nodes
+        n
+        for n in iss_nodes
         if n.get("createdAt") and since_dt <= _dt(n["createdAt"]) <= until_dt
     ]
     if "issues" in repo_dict:
@@ -397,7 +427,8 @@ def fetch_repo(owner, repo, since_iso, until_iso):
     # Stargazers: keep only edges starred within [since, until]
     star_edges = (repo_dict.get("stargazers") or {}).get("edges", []) or []
     star_edges = [
-        e for e in star_edges
+        e
+        for e in star_edges
         if e and e.get("starredAt") and since_dt <= _dt(e["starredAt"]) <= until_dt
     ]
     if "stargazers" in repo_dict:
@@ -406,7 +437,8 @@ def fetch_repo(owner, repo, since_iso, until_iso):
     # Forks: keep only forks created within [since, until]
     fork_nodes = (repo_dict.get("forks") or {}).get("nodes", []) or []
     fork_nodes = [
-        n for n in fork_nodes
+        n
+        for n in fork_nodes
         if n.get("createdAt") and since_dt <= _dt(n["createdAt"]) <= until_dt
     ]
     if "forks" in repo_dict:
@@ -421,6 +453,7 @@ def fetch_repo(owner, repo, since_iso, until_iso):
     repo_dict["__name_with_owner"] = repo_dict.get("nameWithOwner")
 
     return repo_dict, rate
+
 
 # ----------------------------- And Run -----------------------------
 def run(seed_csv: str, outdir: str, since: datetime, until: datetime, only_list=None):
@@ -448,7 +481,7 @@ def run(seed_csv: str, outdir: str, since: datetime, until: datetime, only_list=
     # Iterate rows like a typed namedtuple (owner, repo, possibly other columns)
     for row in df.itertuples(index=False):
         owner = getattr(row, "owner")
-        repo  = getattr(row, "repo")
+        repo = getattr(row, "repo")
         print(f"Fetching: {owner}/{repo} ...")
         try:
             repository, ratelimit = fetch_repo(owner, repo, since_iso, until_iso)
@@ -469,34 +502,71 @@ def run(seed_csv: str, outdir: str, since: datetime, until: datetime, only_list=
 
         # Helpful rate-limit trace
         if ratelimit:
-            print(f"  RateLimit remaining: {ratelimit.get('remaining')} (reset at {ratelimit.get('resetAt')})")
+            print(
+                f"  RateLimit remaining: {ratelimit.get('remaining')} (reset at {ratelimit.get('resetAt')})"
+            )
+
 
 # -------------------------------- CLI ---------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fetch GitHub activity for a seed list of repos.")
-    parser.add_argument("--seed",   default="data/projects_seed.csv", help="Path to CSV with columns owner,repo")
-    parser.add_argument("--outdir", default="data/raw/github",        help="Output directory for JSON files")
-    parser.add_argument("--days",   type=int, default=90,             help="Window size in days (default: 90)")
-    parser.add_argument("--since",  type=str, default=None,           help="ISO start; overrides --days (e.g., 2025-01-01T00:00:00Z)")
-    parser.add_argument("--until",  type=str, default=None,           help="ISO end; default: now UTC")
-    parser.add_argument("--only",   nargs="*", default=None,          help='Optional list like "owner/repo" to fetch only these')
+    parser = argparse.ArgumentParser(
+        description="Fetch GitHub activity for a seed list of repos."
+    )
+    parser.add_argument(
+        "--seed",
+        default="data/projects_seed.csv",
+        help="Path to CSV with columns owner,repo",
+    )
+    parser.add_argument(
+        "--outdir", default="data/raw/github", help="Output directory for JSON files"
+    )
+    parser.add_argument(
+        "--days", type=int, default=90, help="Window size in days (default: 90)"
+    )
+    parser.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        help="ISO start; overrides --days (e.g., 2025-01-01T00:00:00Z)",
+    )
+    parser.add_argument(
+        "--until", type=str, default=None, help="ISO end; default: now UTC"
+    )
+    parser.add_argument(
+        "--only",
+        nargs="*",
+        default=None,
+        help='Optional list like "owner/repo" to fetch only these',
+    )
     parser.add_argument("--retry-failed", action="store_true")
 
     args = parser.parse_args()
 
     # Resolve time window from args (favor explicit ISO over relative days)
-    now   = datetime.now(timezone.utc)
-    until = datetime.fromisoformat(args.until.replace("Z", "+00:00")) if args.until else now
-    since = datetime.fromisoformat(args.since.replace("Z", "+00:00")) if args.since else (until - timedelta(days=args.days))
+    now = datetime.now(timezone.utc)
+    until = (
+        datetime.fromisoformat(args.until.replace("Z", "+00:00")) if args.until else now
+    )
+    since = (
+        datetime.fromisoformat(args.since.replace("Z", "+00:00"))
+        if args.since
+        else (until - timedelta(days=args.days))
+    )
     only_list = args.only
     if args.retry_failed and os.path.exists(FAILED_IDX):
         try:
             failed = _read_failed_idx()
             # overwrite --only with failed set
-            only_list = [f'{x["owner"]}/{x["repo"]}' for x in failed if "owner" in x and "repo" in x]
+            only_list = [
+                f'{x["owner"]}/{x["repo"]}'
+                for x in failed
+                if "owner" in x and "repo" in x
+            ]
             if only_list:
-                print(f"[retry-failed] Retrying {len(only_list)} repo(s) from {FAILED_IDX}")
+                print(
+                    f"[retry-failed] Retrying {len(only_list)} repo(s) from {FAILED_IDX}"
+                )
             else:
                 print("[retry-failed] No failed repos recorded.")
         except Exception as e:
