@@ -167,7 +167,8 @@ def main():
         data_dir = repo_dir / args.subdir
         core_projects_path = data_dir / CORE_PROJECTS_FILENAME
         if not core_projects_path.exists():
-            sys.exit(f"ERROR: Missing {CORE_PROJECTS_FILENAME} in {data_dir}")
+            print(f"ERROR: Missing {CORE_PROJECTS_FILENAME} in {data_dir}", file=sys.stderr)
+            sys.exit(1)
 
         repos_path = find_repos_json(data_dir)
 
