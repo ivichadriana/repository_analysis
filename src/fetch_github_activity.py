@@ -8,7 +8,6 @@ import json
 import time
 import argparse
 from datetime import datetime, timedelta, timezone
-import tempfile
 import pandas as pd
 import requests
 from dotenv import load_dotenv
