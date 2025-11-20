@@ -3,7 +3,7 @@
 Generate per-project executive summaries by calling an LLM.
 """
 
-import os, json, glob, textwrap, argparse, time
+import os, json, glob, argparse, time
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from openai import OpenAI
