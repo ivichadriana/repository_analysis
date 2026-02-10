@@ -17,6 +17,7 @@ What it does:
 from __future__ import annotations
 import argparse
 import csv
+import os
 import json
 import shlex
 import subprocess
@@ -34,7 +35,7 @@ CORE_PROJECTS_FILENAME = "core-projects.json"
 def run_git(args: List[str], cwd: Path | None = None) -> None:
     cmd = ["git"] + args
     try:
-        subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
+       subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True, env=os.environ.copy())
     except subprocess.CalledProcessError as e:
         pretty = " ".join(shlex.quote(x) for x in args)
         print(f"git command failed: git {pretty}\n{e}", file=sys.stderr)
@@ -137,15 +138,26 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cfde_") as tmpd:
         tmp = Path(tmpd)
         repo_dir = tmp / "repo"
+        token = os.getenv("GITHUB_TOKEN")
+        if not token:
+            print("ERROR: GITHUB_TOKEN not set (use --env-file .env)", file=sys.stderr)
+            sys.exit(1)
 
-        print("Cloning via SSH (sparse)...")
+        # Make git non-interactive in Docker
+        os.environ["GIT_TERMINAL_PROMPT"] = "0"
+
+        # Force HTTPS auth using token as password (works everywhere)
+        # Username can be anything; "x-access-token" is the conventional value for GitHub.
+        repo_url_auth = f"https://x-access-token:{token}@github.com/{args.repo}.git"
+
+        print("Cloning via HTTPS (sparse)...")
         run_git(
             [
                 "clone",
                 "-n",
                 "--depth=1",
                 "--filter=tree:0",
-                f"git@github.com:{args.repo}.git",
+                repo_url_auth,
                 str(repo_dir),
             ]
         )
