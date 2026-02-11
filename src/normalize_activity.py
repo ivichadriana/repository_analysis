@@ -350,13 +350,15 @@ def normalize(
                 "fork_owner_login": owner_obj.get("login"),
                 "fork_owner_type": owner_type,
                 "fork_owner_name": owner_obj.get("name"),
-                "fork_owner_company": owner_obj.get("company")
-                if owner_type == "User"
-                else None,
+                "fork_owner_company": (
+                    owner_obj.get("company") if owner_type == "User" else None
+                ),
                 "fork_owner_location": owner_obj.get("location"),
-                "fork_owner_org_description": owner_obj.get("description")
-                if owner_type == "Organization"
-                else None,
+                "fork_owner_org_description": (
+                    owner_obj.get("description")
+                    if owner_type == "Organization"
+                    else None
+                ),
                 "fork_created_at": n.get("createdAt"),
             }
         )

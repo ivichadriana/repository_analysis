@@ -1,0 +1,16 @@
+pandas
+pyarrow
+fastparquet
+python-dotenv
+python-dateutil
+requests
+httpx
+PyGithub
+PyYAML
+weasyprint
+markdown2
+jinja2
+cairosvg
+rich
+tqdm
+openai>=1.0.0
