@@ -1,6 +1,8 @@
 # Analysis of GitHub repository and project content.
 
-The following repository contains an A.I workflow to generate summaries of GitHub repositorie's code and work over an X amount of time. We use cheaper older models for low-level tasks, and newer costly models for high-level tasks. 
+The following repository contains an A.I workflow to generate summaries of GitHub repositorie's code and work over an X amount of time. 
+
+The pipelines allow customizing what model conducts which summary, allowing the use of cheaper older models for low-level tasks, and newer costly models for high-level tasks (this is up to the user). 
 
 You can change time (for activity) and models used in the [src/full.sh](src/full.sh) script. 
 
