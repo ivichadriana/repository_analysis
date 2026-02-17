@@ -19,6 +19,26 @@ RAW_DIR = "data/raw/github"
 
 
 # ----------- Small utilities -----------
+def _clean_text(v) -> str | None:
+    """
+    Normalize optional text fields coming from pandas/JSON.
+    Returns:
+      - stripped string, if v is a real non-empty string
+      - None, if v is None/NaN/pd.NA/empty/whitespace or any non-string
+    """
+    if v is None:
+        return None
+    # pandas missing values often come through as float('nan') or pd.NA
+    try:
+        if pd.isna(v):
+            return None
+    except Exception:
+        pass
+    if not isinstance(v, str):
+        return None
+    s = v.strip()
+    return s if s else None
+
 def _jsonable(v):
     """Convert pandas/NumPy/time values to JSON-safe Python types/strings."""
     # pandas/pyarrow timestamps -> ISO8601 (UTC)
@@ -191,12 +211,12 @@ def _extract_single_repo_fields(
         break
 
     if best is not None:
-        fields["description"] = best.get("repo_description") or None
-        fields["homepage"] = best.get("repo_homepage") or None
+        fields["description"] = _clean_text(best.get("repo_description"))
+        fields["homepage"] = _clean_text(best.get("repo_homepage"))
         fields["topics"] = _split_csv(best.get("repo_topics"))
-        fields["primary_language"] = best.get("repo_primary_language") or None
+        fields["primary_language"] = _clean_text(best.get("repo_primary_language"))
         fields["languages"] = _split_csv(best.get("repo_languages"))
-        fields["readme"] = best.get("readme_text") or None
+        fields["readme"] = _clean_text(best.get("readme_text"))
         # early return if we already have a README
         if fields["readme"]:
             return fields
@@ -265,17 +285,24 @@ def build_repo_context_all(
 
     for owner, repo in pairs:
         f = _extract_single_repo_fields(per_project_dfs, owner, repo)
-        if f["description"]:
-            descs.append(f["description"].strip())
-        if f["homepage"]:
-            homes.append(f["homepage"].strip())
-        topic_ctr.update([t for t in f["topics"] if t])
-        lang_ctr.update([l for l in f["languages"] if l])
-        if f["primary_language"]:
-            primary_ctr.update([f["primary_language"]])
-        if f["readme"]:
-            excerpt = f["readme"].strip()
-            # 2K per-repo excerpt to keep the total bounded
+        d = f.get("description")
+        if isinstance(d, str) and d.strip():
+            descs.append(d.strip())
+
+        h = f.get("homepage")
+        if isinstance(h, str) and h.strip():
+            homes.append(h.strip())
+
+        topic_ctr.update([t for t in f.get("topics", []) if t])
+        lang_ctr.update([l for l in f.get("languages", []) if l])
+
+        pl = f.get("primary_language")
+        if isinstance(pl, str) and pl:
+            primary_ctr.update([pl])
+
+        rtxt = f.get("readme")
+        if isinstance(rtxt, str) and rtxt.strip():
+            excerpt = rtxt.strip()
             parts.append(f"### {owner}/{repo}\n{excerpt[:2000]}")
 
     # Choose description/homepage by frequency; if many distinct descriptions, join a few
