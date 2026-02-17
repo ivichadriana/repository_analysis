@@ -168,14 +168,12 @@ def _extract_single_repo_fields(
 ) -> dict:
     """
     Pull context for one repo from any activity table row; fallback to raw JSON if needed.
-    Returns fields: description, homepage, topics[], primary_language, languages[], readme (str|None).
+    Returns fields: description, homepage, topics[], readme (str|None).
     """
     fields = {
         "description": None,
         "homepage": None,
         "topics": [],
-        "primary_language": None,
-        "languages": [],
         "readme": None,
     }
 
@@ -214,8 +212,6 @@ def _extract_single_repo_fields(
         fields["description"] = _clean_text(best.get("repo_description"))
         fields["homepage"] = _clean_text(best.get("repo_homepage"))
         fields["topics"] = _split_csv(best.get("repo_topics"))
-        fields["primary_language"] = _clean_text(best.get("repo_primary_language"))
-        fields["languages"] = _split_csv(best.get("repo_languages"))
         fields["readme"] = _clean_text(best.get("readme_text"))
         # early return if we already have a README
         if fields["readme"]:
@@ -235,21 +231,11 @@ def _extract_single_repo_fields(
             ]
         except Exception:
             pass
-        # languages
-        langs = []
-        try:
-            nodes = (raw.get("languages") or {}).get("nodes", []) or []
-            langs = [n.get("name") for n in nodes if n and n.get("name")]
-        except Exception:
-            pass
-        fields["description"] = fields["description"] or raw.get("description")
-        fields["homepage"] = fields["homepage"] or raw.get("homepageUrl")
+
+        fields["description"] = fields["description"] or _clean_text(raw.get("description"))
+        fields["homepage"] = fields["homepage"] or _clean_text(raw.get("homepageUrl"))
         fields["topics"] = fields["topics"] or topics
-        fields["primary_language"] = fields["primary_language"] or (
-            (raw.get("primaryLanguage") or {}).get("name")
-        )
-        fields["languages"] = fields["languages"] or langs
-        fields["readme"] = fields["readme"] or raw.get("__readme_text")
+        fields["readme"] = fields["readme"] or _clean_text(raw.get("__readme_text"))
 
     return fields
 
@@ -264,8 +250,6 @@ def build_repo_context_all(
     - description: most common non-empty; if multiple distinct, join a few unique variants (<=500 chars).
     - homepage: most common non-empty
     - topics: frequency-sorted union
-    - primary_language: most common
-    - languages: frequency-sorted union
     - readme: concatenation of short per-repo README excerpts with 'owner/repo' headers (truncated to readme_chars)
     """
     pairs = _iter_project_repos(per_project_dfs, seed_slice=seed_slice)
@@ -274,13 +258,11 @@ def build_repo_context_all(
             "description": None,
             "homepage": None,
             "topics": [],
-            "primary_language": None,
-            "languages": [],
             "readme": None,
         }
 
     descs, homes = [], []
-    topic_ctr, lang_ctr, primary_ctr = Counter(), Counter(), Counter()
+    topic_ctr = Counter()
     parts = []
 
     for owner, repo in pairs:
@@ -294,11 +276,6 @@ def build_repo_context_all(
             homes.append(h.strip())
 
         topic_ctr.update([t for t in f.get("topics", []) if t])
-        lang_ctr.update([l for l in f.get("languages", []) if l])
-
-        pl = f.get("primary_language")
-        if isinstance(pl, str) and pl:
-            primary_ctr.update([pl])
 
         rtxt = f.get("readme")
         if isinstance(rtxt, str) and rtxt.strip():
@@ -323,16 +300,12 @@ def build_repo_context_all(
 
     homepage = Counter(homes).most_common(1)[0][0] if homes else None
     topics = [t for t, _ in topic_ctr.most_common(50)]
-    languages = [l for l, _ in lang_ctr.most_common(50)]
-    primary_language = primary_ctr.most_common(1)[0][0] if primary_ctr else None
     readme = (("\n\n").join(parts)[:readme_chars]) if parts else None
 
     return {
         "description": description,
         "homepage": homepage,
         "topics": topics,
-        "primary_language": primary_language,
-        "languages": languages,
         "readme": readme,
     }
 
