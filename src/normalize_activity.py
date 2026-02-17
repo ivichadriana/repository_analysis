@@ -72,6 +72,15 @@ def _topics_list(repo_json: dict) -> list[str]:
         return []
 
 
+def _lang_list(repo_json: dict) -> list[str]:
+    """Extract repo languages as a simple list of strings (descending by size as fetched)."""
+    try:
+        nodes = (repo_json.get("languages") or {}).get("nodes", []) or []
+        return [n.get("name") for n in nodes if n and n.get("name")]
+    except Exception:
+        return []
+
+
 def tag_text(text: str) -> list[str]:
     """
     Return a list of heuristic tags (e.g., ["fix","test"]) found in a piece of text.
@@ -144,6 +153,8 @@ def normalize(
     repo_description = repo_json.get("description")
     repo_homepage = repo_json.get("homepageUrl")
     repo_topics = _topics_list(repo_json)
+    repo_primary_language = (repo_json.get("primaryLanguage") or {}).get("name")
+    repo_languages = _lang_list(repo_json)
     repo_readme_text = _readme_text(repo_json)
 
     # Attach repo context to the base dict; each row inherits these fields
@@ -152,6 +163,8 @@ def normalize(
             "repo_description": repo_description,
             "repo_homepage": repo_homepage,
             "repo_topics": ",".join(repo_topics) if repo_topics else None,
+            "repo_primary_language": repo_primary_language,
+            "repo_languages": ",".join(repo_languages) if repo_languages else None,
             "readme_text": repo_readme_text,  # used later for “Goal” in LLM prompts
         }
     )

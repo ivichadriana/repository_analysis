@@ -92,6 +92,8 @@ query RepoActivity(
     description
     homepageUrl
     repositoryTopics(first: 20) { nodes { topic { name } } }
+    primaryLanguage { name }
+    languages(first: 10, orderBy: {field: SIZE, direction: DESC}) { nodes { name } }
 
     # ---------------- README candidates (raw text) --------------
     # We check several common paths and pick the first with non-empty text.

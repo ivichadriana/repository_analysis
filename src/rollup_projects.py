@@ -19,74 +19,6 @@ RAW_DIR = "data/raw/github"
 
 
 # ----------- Small utilities -----------
-def _clean_text(v) -> str | None:
-    """
-    Normalize optional text fields coming from pandas/JSON.
-    Returns:
-      - stripped string, if v is a real non-empty string
-      - None, if v is None/NaN/pd.NA/empty/whitespace or any non-string
-    """
-    if v is None:
-        return None
-    # pandas missing values often come through as float('nan') or pd.NA
-    try:
-        if pd.isna(v):
-            return None
-    except Exception:
-        pass
-    if not isinstance(v, str):
-        return None
-    s = v.strip()
-    return s if s else None
-
-def _clean_topic_list(val) -> list[str]:
-    """
-    Normalize topic values into a clean list of strings.
-
-    Accepts:
-      - None / NaN / pd.NA  -> []
-      - list/tuple/set      -> [cleaned strings]
-      - string              -> split on commas, cleaned
-      - anything else       -> []
-
-    Returns:
-      - list of unique, stripped, non-empty topic strings (order preserved)
-    """
-    # Handle None/NaN/pd.NA safely
-    if val is None:
-        return []
-    try:
-        if pd.isna(val):
-            return []
-    except Exception:
-        pass
-
-    # Convert to a list of raw tokens
-    if isinstance(val, (list, tuple, set)):
-        tokens = list(val)
-    elif isinstance(val, str):
-        # repo_topics is stored as "a,b,c" in normalize_activity.py
-        tokens = val.split(",")
-    else:
-        return []
-
-    # Clean + dedupe while preserving order
-    out = []
-    seen = set()
-    for t in tokens:
-        if not isinstance(t, str):
-            continue
-        s = t.strip()
-        if not s:
-            continue
-        if s in seen:
-            continue
-        seen.add(s)
-        out.append(s)
-
-    return out
-
-
 def _jsonable(v):
     """Convert pandas/NumPy/time values to JSON-safe Python types/strings."""
     # pandas/pyarrow timestamps -> ISO8601 (UTC)
@@ -216,14 +148,21 @@ def _extract_single_repo_fields(
 ) -> dict:
     """
     Pull context for one repo from any activity table row; fallback to raw JSON if needed.
-    Returns fields: description, homepage, topics[], readme (str|None).
+    Returns fields: description, homepage, topics[], primary_language, languages[], readme (str|None).
     """
     fields = {
         "description": None,
         "homepage": None,
         "topics": [],
+        "primary_language": None,
+        "languages": [],
         "readme": None,
     }
+
+    def _split_csv(val):
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return []
+        return [x.strip() for x in str(val).split(",") if x.strip()]
 
     # Try to find a row for this repo in any table (prefer one with readme_text)
     tables = [
@@ -252,10 +191,12 @@ def _extract_single_repo_fields(
         break
 
     if best is not None:
-        fields["description"] = _clean_text(best.get("repo_description"))
-        fields["homepage"] = _clean_text(best.get("repo_homepage"))
-        fields["topics"] = _clean_topic_list(best.get("repo_topics"))
-        fields["readme"] = _clean_text(best.get("readme_text"))
+        fields["description"] = best.get("repo_description") or None
+        fields["homepage"] = best.get("repo_homepage") or None
+        fields["topics"] = _split_csv(best.get("repo_topics"))
+        fields["primary_language"] = best.get("repo_primary_language") or None
+        fields["languages"] = _split_csv(best.get("repo_languages"))
+        fields["readme"] = best.get("readme_text") or None
         # early return if we already have a README
         if fields["readme"]:
             return fields
@@ -274,13 +215,21 @@ def _extract_single_repo_fields(
             ]
         except Exception:
             pass
-        topics = _clean_topic_list(topics)
-
-
-        fields["description"] = fields["description"] or _clean_text(raw.get("description"))
-        fields["homepage"] = fields["homepage"] or _clean_text(raw.get("homepageUrl"))
+        # languages
+        langs = []
+        try:
+            nodes = (raw.get("languages") or {}).get("nodes", []) or []
+            langs = [n.get("name") for n in nodes if n and n.get("name")]
+        except Exception:
+            pass
+        fields["description"] = fields["description"] or raw.get("description")
+        fields["homepage"] = fields["homepage"] or raw.get("homepageUrl")
         fields["topics"] = fields["topics"] or topics
-        fields["readme"] = fields["readme"] or _clean_text(raw.get("__readme_text"))
+        fields["primary_language"] = fields["primary_language"] or (
+            (raw.get("primaryLanguage") or {}).get("name")
+        )
+        fields["languages"] = fields["languages"] or langs
+        fields["readme"] = fields["readme"] or raw.get("__readme_text")
 
     return fields
 
@@ -295,6 +244,8 @@ def build_repo_context_all(
     - description: most common non-empty; if multiple distinct, join a few unique variants (<=500 chars).
     - homepage: most common non-empty
     - topics: frequency-sorted union
+    - primary_language: most common
+    - languages: frequency-sorted union
     - readme: concatenation of short per-repo README excerpts with 'owner/repo' headers (truncated to readme_chars)
     """
     pairs = _iter_project_repos(per_project_dfs, seed_slice=seed_slice)
@@ -303,28 +254,28 @@ def build_repo_context_all(
             "description": None,
             "homepage": None,
             "topics": [],
+            "primary_language": None,
+            "languages": [],
             "readme": None,
         }
 
     descs, homes = [], []
-    topic_ctr = Counter()
+    topic_ctr, lang_ctr, primary_ctr = Counter(), Counter(), Counter()
     parts = []
 
     for owner, repo in pairs:
         f = _extract_single_repo_fields(per_project_dfs, owner, repo)
-        d = f.get("description")
-        if isinstance(d, str) and d.strip():
-            descs.append(d.strip())
-
-        h = f.get("homepage")
-        if isinstance(h, str) and h.strip():
-            homes.append(h.strip())
-
-        topic_ctr.update([t for t in f.get("topics", []) if t])
-
-        rtxt = f.get("readme")
-        if isinstance(rtxt, str) and rtxt.strip():
-            excerpt = rtxt.strip()
+        if f["description"]:
+            descs.append(f["description"].strip())
+        if f["homepage"]:
+            homes.append(f["homepage"].strip())
+        topic_ctr.update([t for t in f["topics"] if t])
+        lang_ctr.update([l for l in f["languages"] if l])
+        if f["primary_language"]:
+            primary_ctr.update([f["primary_language"]])
+        if f["readme"]:
+            excerpt = f["readme"].strip()
+            # 2K per-repo excerpt to keep the total bounded
             parts.append(f"### {owner}/{repo}\n{excerpt[:2000]}")
 
     # Choose description/homepage by frequency; if many distinct descriptions, join a few
@@ -345,12 +296,16 @@ def build_repo_context_all(
 
     homepage = Counter(homes).most_common(1)[0][0] if homes else None
     topics = [t for t, _ in topic_ctr.most_common(50)]
+    languages = [l for l, _ in lang_ctr.most_common(50)]
+    primary_language = primary_ctr.most_common(1)[0][0] if primary_ctr else None
     readme = (("\n\n").join(parts)[:readme_chars]) if parts else None
 
     return {
         "description": description,
         "homepage": homepage,
         "topics": topics,
+        "primary_language": primary_language,
+        "languages": languages,
         "readme": readme,
     }
 
