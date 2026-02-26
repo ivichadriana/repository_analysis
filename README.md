@@ -1,25 +1,47 @@
-# Analysis of GitHub repository and project content.
+# Analysis of GitHub Repository and Project Content
 
-The following repository contains an A.I workflow to generate summaries of GitHub repositorie's code and work over an X amount of time. 
+This repository contains two AI-powered pipelines that generate executive summaries of GitHub repositories, projects, and portfolios over a configurable time window. Both pipelines produce the same three-tier output — repo-level, project-level, and portfolio-level summaries — and are designed for direct comparison.
 
-The pipelines allow customizing what model conducts which summary, allowing the use of cheaper older models for low-level tasks, and newer costly models for high-level tasks (this is up to the user). 
+| Pipeline | Approach | Models | Output suffix |
+|---|---|---|---|
+| **Chat-based** (`src/`) | Pre-fetches activity data, feeds it to OpenAI via Python | Configurable per tier | `_chatbased` |
+| **Agentic** (`agentic/`) | GitHub Copilot CLI reads repos and activity autonomously | GitHub Copilot | `_agentbased` |
 
-You can change time (for activity) and models used in the [src/full.sh](src/full.sh) script. 
+Both pipelines write to the same `reports/` and `reports_pdf/` folders. Each pipeline only cleans its own output files, so you can run both and keep both sets of results side by side.
 
-Please note that projects_seeds.csv is created within the pipeline, and if you want to test the pipeline with other or less projects, adjust[src/full.sh](src/full.sh) accoridngly.
+---
 
-Also note that the [src/full.sh](src/full.sh) pipeline removes all documents currently in reports and data folders. Plan accordingly before running.
+## 1. Add the required tokens
 
-## 1. First add the 2 needed tokens: one for GitHub and one for OpenAI API.
+Both pipelines share the same `.env` file. Use `.env_example` as a template.
 
-### - GitHub: 
-#### - Go to [GitHub.com](https://github.com/) > Seitings > Developer settings > Personal Access Tokens > Tokens (classic) > Generate a token, select repo box and read:org box. You need to have nih-cfde oganization access.
-### - OpenAI API: 
-#### - Go to [OpenAI API](https://openai.com/api/pricing/), generate token to use 
-### - Add tokens to the .env file (.env_example can serve as template)
+### Chat-based pipeline needs:
+- **GitHub token:** Go to [GitHub.com](https://github.com/) > Settings > Developer settings > Personal Access Tokens > Tokens (classic) > Generate a token. Select the `repo` and `read:org` boxes. You need NIH-CFDE organization access.
+- **OpenAI API key:** Go to [OpenAI API](https://openai.com/api/pricing/) and generate a token.
 
-## 2. Run the full pipeline: 
+### Agentic pipeline additionally needs:
+- **GitHub Copilot subscription:** You need an active GitHub Copilot subscription and must authenticate locally before running (see Section 2).
 
+---
+
+## 2. One-time setup: authenticate GitHub Copilot CLI (agentic pipeline only)
+
+The agentic pipeline uses GitHub Copilot CLI, which must be authenticated with your GitHub account before running. This only needs to be done once on your local machine.
+```bash
+# Install Copilot CLI locally if you haven't already
+npm install -g @githubnext/github-copilot-cli
+
+# Authenticate — this saves credentials to ~/.config/github-copilot/
+copilot auth
+```
+
+Follow the prompts to log in with your GitHub account. You need an active GitHub Copilot subscription. Once authenticated, the Docker run command mounts these credentials into the container so Copilot can identify you without re-authenticating.
+
+---
+
+## 3. Run the pipeline of your choice
+
+### Agentic (default)
 ```bash
 docker build -t cfde-pipeline --no-cache .
 
@@ -27,34 +49,78 @@ docker run --rm --env-file .env \
   -v "$PWD/data:/app/data" \
   -v "$PWD/reports:/app/reports" \
   -v "$PWD/reports_pdf:/app/reports_pdf" \
+  -v "$HOME/.config/github-copilot:/root/.config/github-copilot:ro" \
   cfde-pipeline
-  ```
+```
 
-## Details
-### 1) Clean outputs
-- Removes files from data, reports, and reports_pdf. This is needed since data/summaries in these files are used (i.e., repo summaries are used for project summaries, etc.).
+### Chat-based
+```bash
+docker build -t cfde-pipeline --build-arg PIPELINE=chatbased --no-cache .
 
-### 2) src/build_projects_seed.py
-- This script grabs the JSON information from CFDE-Eval core private repository with repository and project information (i.e., what projects we care about). If you want to run pipeline with another project cohort, update project_seed.csv instead and don't run this.
+docker run --rm --env-file .env \
+  -v "$PWD/data:/app/data" \
+  -v "$PWD/reports:/app/reports" \
+  -v "$PWD/reports_pdf:/app/reports_pdf" \
+  cfde-pipeline
+```
 
-### 3) /src/fetch_github_activity.py
-- Uses GraphQL querying to fetch all github activity from all repostiroies in project_seed.csv. Fills /data/ folder. If you want to use another time, update that call: --days=365. If GraphQL fails for repos, there are retries implemented. Failure is still a possibility (netweork issues, etc.).
+> The `-v "$HOME/.config/github-copilot:/root/.config/github-copilot:ro"` mount is only needed for the agentic pipeline. The chat-based pipeline does not need it.
 
-### 4) /src/normalize_activity.py and /src/rollup_projects.py
-- These files put the needed information in a digestible format for LLM (parquet files and JSON structures)
+## 4. Customizing the pipeline
 
-### 5) LLM calls: /src/summarize_repos.py, /src/summarize_projects.py, /src/summarize_portfolio.py
+- **Time window:** Change `--days=365` in `src/full.sh` or `agentic/full.sh`.
+- **Models (chat-based only):** Change the `--model` flags in `src/full.sh`.
+- **Project cohort:** `projects_seed.csv` is auto-generated by `build_projects_seed.py`. To use a different set of projects, update `data/projects_seed.csv` manually and remove the `build_projects_seed.py` call from `full.sh`.
 
-#### /src/summarize_repos.py: 
-- Generates per-repository executive-summary Markdown reports by loading cleaned GitHub activity tables and seed repos, shallow-cloning each repo to infer its goal from code, then prompting an OpenAI model (with retries) to synthesize “Summary and Goal” + “Recent Developments” sections and writing them to reports/, cleaning up clones afterward.
+---
 
-#### /src/summarize_projects.py:
-- Aggregates repo-level “Summary and Goal” and “Recent Developments” sections from previously generated Markdown (with rollup JSON as fallback evidence) and uses an OpenAI model to synthesize a single per-project executive-summary Markdown report per project in reports/.
+## Pipeline details
 
-#### /src/summarize_portfolio.py:
-Synthesizes a single portfolio-wide executive summary by reading the rollup _portfolio.json, pulling goal and “Recent Developments” text from project/repo Markdown reports (with metric-based fallback), then prompting an OpenAI model (with retries) to produce a two-section Markdown report written to reports/_portfolio_full.md.
+Both pipelines share steps 1–4. Summaries diverge at step 5.
 
-### 6) src/make_pdf.py 
-- Generates PDF files, saved in /reports_pdf/, from the markdown files generated before.
+### Shared steps (both pipelines)
 
+**1) Clean outputs**
+Removes only the current pipeline's output files from `reports/` and `reports_pdf/`.
 
+**2) `src/build_projects_seed.py`**
+Fetches repository and project information from the CFDE-Eval core private repository and writes `data/projects_seed.csv`. To use a custom project cohort, skip this step and edit the CSV directly.
+
+**3) `src/fetch_github_activity.py`**
+Uses GraphQL to fetch all GitHub activity (commits, PRs, issues, releases, stars, forks) for all repositories in `projects_seed.csv`. Retry logic is included for network failures.
+
+**4) `src/normalize_activity.py` and `src/rollup_projects.py`**
+Normalize raw data into cleaned parquet tables and per-project JSON rollups for downstream consumption.
+
+---
+
+### Chat-based summary steps (`src/`)
+
+**5) `src/summarize_repos.py`**
+Shallow-clones each repository and uses a map-reduce approach over the codebase to infer its goal. Combines this with fetched activity data and calls an OpenAI model to produce a `## Summary and Goal` + `## Recent Developments` report per repository. Output: `reports/<PROJECT_ID>__<owner>__<repo>__chatbased.md`.
+
+**6) `src/summarize_projects.py`**
+Reads all repo-level `_chatbased.md` files for each project and calls an OpenAI model to synthesize a single project-level executive summary. Output: `reports/<PROJECT_ID>__chatbased.md`.
+
+**7) `src/summarize_portfolio.py`**
+Reads all project-level `_chatbased.md` files and calls an OpenAI model to produce a single portfolio-wide summary. Output: `reports/_portfolio_full__chatbased.md`.
+
+---
+
+### Agentic summary steps (`agentic/`)
+
+**5) `agentic/run_repo_summaries.sh` + `agentic/build_activity_context.py`**
+Shallow-clones each repository, injects the same activity data as the chat-based pipeline into a `_activity_context.md` file, then runs GitHub Copilot CLI inside the clone using the `repo-summary` skill. Copilot reads the code and activity autonomously and writes the summary. Output: `reports/<PROJECT_ID>__<owner>__<repo>__agentbased.md`.
+
+**6) `agentic/run_project_summaries.sh`**
+Creates a temporary working directory per project containing all its repo-level `_agentbased.md` files, then runs Copilot CLI using the `project-summary` skill to synthesize a project-level summary. Output: `reports/<PROJECT_ID>__agentbased.md`.
+
+**7) `agentic/run_portfolio_summary.sh`**
+Gathers all project-level `_agentbased.md` files into a working directory and runs Copilot CLI using the `portfolio-summary` skill to produce a portfolio-wide summary. Output: `reports/_portfolio_full__agentbased.md`.
+
+---
+
+### Shared final step (both pipelines)
+
+**8) `src/make_pdfs.py`**
+Converts all Markdown reports in `reports/` to styled PDFs saved in `reports_pdf/`. Each pipeline's outputs are named with their respective suffix so both sets can coexist.
