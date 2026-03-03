@@ -38,11 +38,11 @@ echo ">>> Clean complete."
 
 # ---- 2) Build project seed ----
 echo ">>> Building project seed..."
-# python "${ROOT_DIR}/src/build_projects_seed.py" \
-#   --repo "nih-cfde/icc-eval-core-private" \
-#   --branch "main" \
-#   --subdir "data/output" \
-#   --output "${ROOT_DIR}/data/projects_seed.csv"
+python "${ROOT_DIR}/src/build_projects_seed.py" \
+  --repo "nih-cfde/icc-eval-core-private" \
+  --branch "main" \
+  --subdir "data/output" \
+  --output "${ROOT_DIR}/data/projects_seed.csv"
 
 # ---- 3) Fetch GitHub activity ----
 echo ">>> Fetching GitHub activity..."

@@ -8,6 +8,7 @@ import pathlib, subprocess, os, textwrap
 from typing import Iterable, List, Tuple, Optional
 import shutil
 import math
+os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
 
 BINARY_EXTS = {
     # images & raster
@@ -383,7 +384,11 @@ def shallow_clone(owner: str, repo: str, dest_root: pathlib.Path) -> pathlib.Pat
     Clone or refresh a shallow checkout of https://github.com/{owner}/{repo}.git
     into dest_root/owner/repo. Returns the repo path.
     """
-    url = f"https://github.com/{owner}/{repo}.git"
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if token:
+        url = f"https://x-access-token:{token}@github.com/{owner}/{repo}.git"
+    else:
+        url = f"https://github.com/{owner}/{repo}.git"
     dest = dest_root / owner / repo
     dest.parent.mkdir(parents=True, exist_ok=True)
     if (dest / ".git").exists():
@@ -392,7 +397,6 @@ def shallow_clone(owner: str, repo: str, dest_root: pathlib.Path) -> pathlib.Pat
     else:
         _run(["git", "clone", "--depth", "1", "--single-branch", url, str(dest)])
     return dest
-
 
 def _is_binary_path(p: pathlib.Path) -> bool:
     name_l = p.name.lower()
