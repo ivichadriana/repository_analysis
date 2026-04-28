@@ -34,17 +34,20 @@ echo ">>> Using gh: $(command -v gh)"
 echo ">>> Cleaning previous agentbased outputs..."
 find "${ROOT_DIR}/reports" -maxdepth 1 -name "*__agentbased.md" -delete 2>/dev/null || true
 find "${ROOT_DIR}/reports_pdf" -maxdepth 1 -name "*__agentbased.pdf" -delete 2>/dev/null || true
+rm -rf "${ROOT_DIR}/data/raw/github/"* \
+       "${ROOT_DIR}/data/clean/"* \
+       "${ROOT_DIR}/data/summary/"* 2>/dev/null || true
 echo ">>> Clean complete."
 
 # ---- 2) Build project seed ----
 echo ">>> Building project seed..."
-# python "${ROOT_DIR}/src/build_projects_seed.py" \
-#   --repo "nih-cfde/icc-eval-core-private" \
-#   --branch "main" \
-#   --subdir "data/output" \
-#   --output "${ROOT_DIR}/data/projects_seed.csv"
+python "${ROOT_DIR}/src/build_projects_seed.py" \
+  --repo "nih-cfde/icc-eval-core-private" \
+  --branch "main" \
+  --subdir "data/output" \
+  --output "${ROOT_DIR}/data/projects_seed.csv"
 
-# ---- 3) Fetch GitHub activity ----
+# # ---- 3) Fetch GitHub activity ---- CHANGE NUMBER OF DAYS HERE AS NEEDED.
 echo ">>> Fetching GitHub activity..."
 python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365
 
@@ -55,6 +58,18 @@ while [ -s "${ROOT_DIR}/data/raw/github/_failed.json" ] && [ $pass -lt $max_pass
   echo "[retry] pass $pass"
   python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365 --retry-failed || true
 done
+
+# Second attempt with lite query for persistent failures
+if [ -s "${ROOT_DIR}/data/raw/github/_failed.json" ]; then
+  echo "[lite-retry] Attempting persistent failures with reduced query..."
+  python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365 --retry-failed --lite || true
+fi
+
+# # Third attempt with minimal query (no PR files) for very large repos
+if [ -s "${ROOT_DIR}/data/raw/github/_failed.json" ]; then
+  echo "[minimal-retry] Attempting persistent failures with minimal query..."
+  python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365 --retry-failed --minimal || true
+fi
 
 # ---- 4) Normalize and rollup ----
 echo ">>> Normalizing and rolling up..."

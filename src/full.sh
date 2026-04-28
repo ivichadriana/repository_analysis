@@ -15,20 +15,20 @@ python --version
 
 PIPELINE_START=$(date +%s)
 
-# 1) Clean outputs
+#1) Clean outputs
 rm -rf "${ROOT_DIR}/data/raw/github/"* \
-      "${ROOT_DIR}/data/clean/"* \
-      "${ROOT_DIR}/data/summary/"* \
-      "${ROOT_DIR}/reports/"* \
-      "${ROOT_DIR}/reports_pdf/"* 2>/dev/null || true
+       "${ROOT_DIR}/data/clean/"* \
+       "${ROOT_DIR}/data/summary/"* 2>/dev/null || true
+find "${ROOT_DIR}/reports" -maxdepth 1 -name "*__chatbased.md" -delete 2>/dev/null || true
+find "${ROOT_DIR}/reports_pdf" -maxdepth 1 -name "*__chatbased.pdf" -delete 2>/dev/null || true
 
-# # # 2) Pipeline
-# ''' If you want to choose your own projects, remove this script below'''
-# python "${ROOT_DIR}/src/build_projects_seed.py" \
-#   --repo "nih-cfde/icc-eval-core-private" \
-#   --branch "main" \
-#   --subdir "data/output" \
-#   --output "${ROOT_DIR}/data/projects_seed.csv"
+## 2) Pipeline
+## ''' If you want to choose your own projects, remove this script below'''
+python "${ROOT_DIR}/src/build_projects_seed.py" \
+  --repo "nih-cfde/icc-eval-core-private" \
+  --branch "main" \
+  --subdir "data/output" \
+  --output "${ROOT_DIR}/data/projects_seed.csv"
 
 python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365
 
@@ -39,6 +39,18 @@ while [ -s "${ROOT_DIR}/data/raw/github/_failed.json" ] && [ $pass -lt $max_pass
   echo "[retry] pass $pass"
   python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365 --retry-failed || true
 done
+
+# Second attempt with lite query for persistent failures
+if [ -s "${ROOT_DIR}/data/raw/github/_failed.json" ]; then
+  echo "[lite-retry] Attempting persistent failures with reduced query..."
+  python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365 --retry-failed --lite || true
+fi
+
+# Third attempt with minimal query (no PR files) for very large repos
+if [ -s "${ROOT_DIR}/data/raw/github/_failed.json" ]; then
+  echo "[minimal-retry] Attempting persistent failures with minimal query..."
+  python "${ROOT_DIR}/src/fetch_github_activity.py" --days=365 --retry-failed --minimal || true
+fi
 
 python "${ROOT_DIR}/src/normalize_activity.py"
 python "${ROOT_DIR}/src/rollup_projects.py"

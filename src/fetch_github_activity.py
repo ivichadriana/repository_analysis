@@ -201,7 +201,207 @@ query RepoActivity(
   }
 }
 """
+GQL_LITE = """
+query RepoActivity(
+  $owner:String!,
+  $name:String!,
+  $sinceGit:GitTimestamp!,
+  $untilGit:GitTimestamp!,
+  $sinceDT:DateTime!
+) {
+  rateLimit { cost remaining resetAt }
 
+  repository(owner:$owner, name:$name) {
+    nameWithOwner
+    url
+    description
+    homepageUrl
+    repositoryTopics(first: 10) { nodes { topic { name } } }
+
+    readmeMd:       object(expression: "HEAD:README.md")        { ... on Blob { text } }
+    readmeCapMd:    object(expression: "HEAD:README.MD")        { ... on Blob { text } }
+    readmeRst:      object(expression: "HEAD:README.rst")       { ... on Blob { text } }
+    readmeTxt:      object(expression: "HEAD:README.txt")       { ... on Blob { text } }
+    docsReadmeMd:   object(expression: "HEAD:docs/README.md")   { ... on Blob { text } }
+    docsReadmeRst:  object(expression: "HEAD:docs/README.rst")  { ... on Blob { text } }
+
+    defaultBranchRef {
+      name
+      target {
+        ... on Commit {
+          history(since:$sinceGit, until:$untilGit, first:50) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              oid
+              committedDate
+              messageHeadline
+              message
+              additions
+              deletions
+              author { name email user { login } }
+              associatedPullRequests(first:5) { nodes { number url mergedAt title } }
+              url
+            }
+          }
+        }
+      }
+    }
+
+    issues(first:25, orderBy:{field:CREATED_AT, direction:DESC}, filterBy:{since:$sinceDT}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title bodyText createdAt closedAt url
+        author { login }
+        labels(first:10) { nodes { name } }
+      }
+    }
+
+    pullRequests(first:25, orderBy:{field:CREATED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title bodyText createdAt mergedAt closedAt state url
+        author { login }
+        labels(first:10) { nodes { name } }
+        files(first:25) { nodes { path additions deletions } }
+      }
+    }
+
+    releases(first:25, orderBy:{field:CREATED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        name tagName publishedAt url description descriptionHTML
+      }
+    }
+
+    stargazers(first:25, orderBy:{field:STARRED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        starredAt
+        node {
+          __typename
+          login
+          ... on User {
+            name company location
+            organizations(first:3) { nodes { login name } }
+          }
+        }
+      }
+    }
+
+    forks(first:25, orderBy:{field:CREATED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        nameWithOwner createdAt
+        owner {
+          __typename login
+          ... on User { name company location }
+          ... on Organization { name description location }
+        }
+      }
+    }
+  }
+}
+"""
+GQL_MINIMAL = """
+query RepoActivity(
+  $owner:String!,
+  $name:String!,
+  $sinceGit:GitTimestamp!,
+  $untilGit:GitTimestamp!,
+  $sinceDT:DateTime!
+) {
+  rateLimit { cost remaining resetAt }
+
+  repository(owner:$owner, name:$name) {
+    nameWithOwner
+    url
+    description
+    homepageUrl
+    repositoryTopics(first: 10) { nodes { topic { name } } }
+
+    readmeMd:       object(expression: "HEAD:README.md")        { ... on Blob { text } }
+    readmeCapMd:    object(expression: "HEAD:README.MD")        { ... on Blob { text } }
+    readmeRst:      object(expression: "HEAD:README.rst")       { ... on Blob { text } }
+    readmeTxt:      object(expression: "HEAD:README.txt")       { ... on Blob { text } }
+    docsReadmeMd:   object(expression: "HEAD:docs/README.md")   { ... on Blob { text } }
+    docsReadmeRst:  object(expression: "HEAD:docs/README.rst")  { ... on Blob { text } }
+
+    defaultBranchRef {
+      name
+      target {
+        ... on Commit {
+          history(since:$sinceGit, until:$untilGit, first:50) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              oid
+              committedDate
+              messageHeadline
+              message
+              additions
+              deletions
+              author { name email user { login } }
+              associatedPullRequests(first:5) { nodes { number url mergedAt title } }
+              url
+            }
+          }
+        }
+      }
+    }
+
+    issues(first:25, orderBy:{field:CREATED_AT, direction:DESC}, filterBy:{since:$sinceDT}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title bodyText createdAt closedAt url
+        author { login }
+        labels(first:10) { nodes { name } }
+      }
+    }
+
+    pullRequests(first:25, orderBy:{field:CREATED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title bodyText createdAt mergedAt closedAt state url
+        author { login }
+        labels(first:10) { nodes { name } }
+      }
+    }
+
+    releases(first:25, orderBy:{field:CREATED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        name tagName publishedAt url description descriptionHTML
+      }
+    }
+
+    stargazers(first:25, orderBy:{field:STARRED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        starredAt
+        node {
+          __typename
+          login
+          ... on User {
+            name company location
+            organizations(first:3) { nodes { login name } }
+          }
+        }
+      }
+    }
+
+    forks(first:25, orderBy:{field:CREATED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        nameWithOwner createdAt
+        owner {
+          __typename login
+          ... on User { name company location }
+          ... on Organization { name description location }
+        }
+      }
+    }
+  }
+}
+"""
 # ------------------------- Fetch functions with retries ---------------------------
 
 
@@ -364,21 +564,21 @@ def choose_readme_text(repo_dict: dict) -> str | None:
 
 
 # --------------------------- Fetch one repo ----------------------------
-def fetch_repo(owner, repo, since_iso, until_iso):
-    """
-    Run the GraphQL query once and return:
-      - repository subtree (dict)
-      - rate limit snapshot (dict)
-    Also clamps PRs, releases, issues, stargazers, and forks to the [since, until] window client-side.
-    """
+def fetch_repo(owner, repo, since_iso, until_iso, lite=False, minimal=False):
+    if minimal:
+        query = GQL_MINIMAL
+    elif lite:
+        query = GQL_LITE
+    else:
+        query = GQL
     payload = {
-        "query": GQL,
+        "query": query,
         "variables": {
             "owner": owner,
             "name": repo,
-            "sinceGit": since_iso,  # used by commit history
-            "untilGit": until_iso,  # used by commit history
-            "sinceDT": since_iso,  # used by issues.filterBy.since
+            "sinceGit": since_iso,
+            "untilGit": until_iso,
+            "sinceDT": since_iso,
         },
     }
 
@@ -454,7 +654,7 @@ def fetch_repo(owner, repo, since_iso, until_iso):
 
 
 # ----------------------------- And Run -----------------------------
-def run(seed_csv: str, outdir: str, since: datetime, until: datetime, only_list=None):
+def run(seed_csv: str, outdir: str, since: datetime, until: datetime, only_list=None, lite=False, minimal=False):
     """
     Read the seed CSV, optionally filter to a subset of "owner/repo", and
     fetch each repo to a JSON file under outdir.
@@ -482,7 +682,7 @@ def run(seed_csv: str, outdir: str, since: datetime, until: datetime, only_list=
         repo = getattr(row, "repo")
         print(f"Fetching: {owner}/{repo} ...")
         try:
-            repository, ratelimit = fetch_repo(owner, repo, since_iso, until_iso)
+            repository, ratelimit = fetch_repo(owner, repo, since_iso, until_iso, lite=lite, minimal=minimal)
         except Exception as e:
             # Write an error stub + index this repo in _failed.json (so we can retry)
             print(f"  ERROR {owner}/{repo}: {e}")
@@ -538,6 +738,16 @@ if __name__ == "__main__":
         help='Optional list like "owner/repo" to fetch only these',
     )
     parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument(
+            "--lite",
+            action="store_true",
+            help="Use reduced query limits for large repos that fail the full query"
+    )
+    parser.add_argument(
+            "--minimal",
+            action="store_true",
+            help="Use minimal query with no PR file listings for very large repos"
+    )
 
     args = parser.parse_args()
 
@@ -570,4 +780,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[retry-failed] Could not read {FAILED_IDX}: {e}")
     # Run the batch
-    run(args.seed, args.outdir, since, until, only_list=only_list)
+    run(args.seed, args.outdir, since, until, only_list=only_list, lite=args.lite, minimal=args.minimal)
